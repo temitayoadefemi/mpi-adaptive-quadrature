@@ -41,6 +41,7 @@ int main(void) {
     // Get the number of processes
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Datatype interval_type = create_interval_type();
  
     if (rank == 0) {
 
@@ -60,7 +61,7 @@ int main(void) {
             int tasks_sent = 0;
             struct Interval interval = dequeue(queue);
             for (i = 0; i < world_size; i++) {
-                
+                MPI_Send(&interval, 1, interval_type, i, 0, MPI_COMM_WORLD);
             }
 
         }
