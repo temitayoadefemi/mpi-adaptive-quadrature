@@ -32,6 +32,9 @@ int main(void) {
     struct Queue queue;
     struct Interval whole;
 
+
+    int result = 0;
+
     MPI_Init(&argc, &argv);
 
     // Get the rank of the process
@@ -58,13 +61,26 @@ int main(void) {
         while (!isempty(queue)) {
 
             int active_processes = 0;
-            int tasks_sent = 0;
-            struct Interval interval = dequeue(queue);
-            for (i = 0; i < world_size; i++) {
+            for (i = 1; i < world_size; i++ && i < size(queue)) {
+                struct Interval interval = dequeue(queue);
                 MPI_Send(&interval, 1, interval_type, i, 0, MPI_COMM_WORLD);
+                active_processes += 1;
+            }
+
+            struct Interval first_half;
+            struct Interval second_half;
+            for (i = 1; i < active_processes; i++ ) {
+                MPI_Recv(&first_half, 1, interval_type, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&second_half, 1, interval_type, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
 
         }
+    }
+    else {
+        struct Interval local_interval;
+        struct Interval i1, i2;
+        MPI_Recv(&local_interval, 1, interval_type, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        simpson(func1, local_interval, &i1, &i2, &result)
 
     }
     // Perform integration
