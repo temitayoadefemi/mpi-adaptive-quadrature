@@ -2,38 +2,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "function.h" // Ensure this header defines func1 correctly
+#include "queue.h"
 
-#define MAXQUEUE 10000
-
-struct Interval {
-    double left;   // left boundary
-    double right;  // right boundary
-    double tol;    // tolerance
-    double f_left; // function value at left boundary
-    double f_mid;  // function value at midpoint
-    double f_right; // function value at right boundary
-};
-
-struct Queue {
-    struct Interval entry[MAXQUEUE]; // array of queue entries
-    int top; // index of last entry
-};
-
-// Initialize queue
 void init(struct Queue *queue_p) {
     queue_p->top = -1;
 }
 
-// Check if queue is empty
 int isempty(struct Queue *queue_p) {
-    return (queue_p->top == -1);
+    return queue_p->top == -1;
 }
 
 int size(struct Queue *queue_p) {
     return queue_p->top + 1;
 }
 
-// Add an interval to the queue
 void enqueue(struct Interval interval, struct Queue *queue_p) {
     if (queue_p->top == MAXQUEUE - 1) {
         printf("Maximum queue size exceeded - exiting\n");
@@ -43,7 +25,6 @@ void enqueue(struct Interval interval, struct Queue *queue_p) {
     queue_p->entry[queue_p->top] = interval;
 }
 
-// Extract last interval from queue
 struct Interval dequeue(struct Queue *queue_p) {
     if (queue_p->top == -1) {
         printf("Attempt to extract from empty queue - exiting\n");
@@ -51,7 +32,6 @@ struct Interval dequeue(struct Queue *queue_p) {
     }
     return queue_p->entry[queue_p->top--];
 }
-
 // Simpson's rule integration using a queue
 void simpson(double (*func)(double), struct Interval interval, struct Interval *i1, struct Interval *i2, double *result) {
     double quad = 0.0;
