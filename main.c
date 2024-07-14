@@ -1,5 +1,6 @@
 #include <mpi.h>
-#include "queue.c"
+#include "queue.h"
+#include "function.h"
 #include <stdbool.h>
 
 MPI_Datatype create_interval_type() {
