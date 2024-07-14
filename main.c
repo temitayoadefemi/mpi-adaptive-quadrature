@@ -54,7 +54,16 @@ int main(void) {
 
         enqueue(whole, &queue);
 
-        
+        while (!isempty(queue)) {
+
+            int active_processes = 0;
+            int tasks_sent = 0;
+            struct Interval interval = dequeue(queue);
+            for (i = 0; i < world_size; i++) {
+                
+            }
+
+        }
 
     }
     // Perform integration
