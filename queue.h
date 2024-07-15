@@ -1,7 +1,7 @@
 #ifndef QUEUE_H
 #define QUEUE_H
 
-#define MAXQUEUE 10000
+#define MAXQUEUE 100000
 
 struct Interval {
     double left;
