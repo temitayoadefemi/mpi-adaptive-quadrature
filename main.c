@@ -5,31 +5,25 @@
 #include <mpi.h>
 #include <stdio.h>
 
+
 MPI_Datatype create_interval_type() {
-    struct Interval interval;
     MPI_Datatype interval_type;
-    int blocklengths[6] = {1, 1, 1, 1, 1, 1};
-    MPI_Aint displacements[6];
-    MPI_Datatype types[6] = {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE};
+    int blocklengths[] = {1, 1, 1, 1, 1, 1};
+    MPI_Datatype types[] = {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE};
+    MPI_Aint offsets[6];
 
-    MPI_Get_address(&interval.left, &displacements[0]);
-    MPI_Get_address(&interval.right, &displacements[1]);
-    MPI_Get_address(&interval.tol, &displacements[2]);
-    MPI_Get_address(&interval.f_left, &displacements[3]);
-    MPI_Get_address(&interval.f_right, &displacements[4]);
-    MPI_Get_address(&interval.f_mid, &displacements[5]);
+    offsets[0] = offsetof(struct Interval, left);
+    offsets[1] = offsetof(struct Interval, right);
+    offsets[2] = offsetof(struct Interval, tol);
+    offsets[3] = offsetof(struct Interval, f_left);
+    offsets[4] = offsetof(struct Interval, f_right);
+    offsets[5] = offsetof(struct Interval, f_mid);
 
-    for (int i = 1; i < 6; i++) {
-        displacements[i] -= displacements[0];
-    }
-    displacements[0] = 0;
-
-    MPI_Type_create_struct(6, blocklengths, displacements, types, &interval_type);
+    MPI_Type_create_struct(6, blocklengths, offsets, types, &interval_type);
     MPI_Type_commit(&interval_type);
 
     return interval_type;
 }
-
 
 int main(int argc, char **argv) {
     int mpi_result = MPI_Init(&argc, &argv);
