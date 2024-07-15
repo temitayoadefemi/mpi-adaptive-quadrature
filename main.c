@@ -2,6 +2,8 @@
 #include "queue.h"
 #include "function.h"
 #include <stdbool.h>
+#include <mpi.h>
+#include <stdio.h>
 
 MPI_Datatype create_interval_type() {
     struct Interval interval;
@@ -30,7 +32,11 @@ MPI_Datatype create_interval_type() {
 
 
 int main(int argc, char **argv) {
-    MPI_Init(&argc, &argv);
+    int mpi_result = MPI_Init(&argc, &argv);
+    if (mpi_result != MPI_SUCCESS) {
+        fprintf(stderr, "MPI_Init failed\n");
+        return 1;
+    }
 
     int world_rank, world_size;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
@@ -38,44 +44,112 @@ int main(int argc, char **argv) {
 
     MPI_Datatype interval_type = create_interval_type();
 
-    struct Queue queue;  // Define the queue
-    init(&queue);  // Initialize the queue
-
     if (world_rank == 0) {
-        struct Interval whole = {.left = 0.0, .right = 10.0, .tol = 1e-6, .f_left = func1(0.0), .f_right = func1(10.0), .f_mid = func1((0.0 + 10.0) / 2.0)};
+        struct Queue queue;
+        init(&queue);  // Initialize the queue
+
+        // Define the whole interval to process
+        struct Interval whole = {.left = 0.0, .right = 10.0, .tol = 1e-6, .f_left = func1(0.0), .f_right = func1(10.0), .f_mid = func1(5.0)};
         enqueue(whole, &queue);
+
+        double total_integral = 0.0;
 
         while (!isempty(&queue)) {
             int active_processes = 0;
             for (int i = 1; i < world_size && !isempty(&queue); i++) {
                 struct Interval interval = dequeue(&queue);
-                MPI_Send(&interval, 1, interval_type, i, 0, MPI_COMM_WORLD);
+                mpi_result = MPI_Send(&interval, 1, interval_type, i, 0, MPI_COMM_WORLD);
+                if (mpi_result != MPI_SUCCESS) {
+                    fprintf(stderr, "MPI_Send failed\n");
+                    MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                }
                 active_processes++;
             }
 
             for (int i = 1; i <= active_processes; i++) {
                 struct Interval results[2];
-                MPI_Recv(results, 2, interval_type, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                enqueue(results[0], &queue);
-                enqueue(results[1], &queue);
+                double partial_result;
+                mpi_result = MPI_Recv(&partial_result, 1, MPI_DOUBLE, i, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (mpi_result != MPI_SUCCESS) {
+                    fprintf(stderr, "MPI_Recv failed\n");
+                    MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                }
+                
+                if (partial_result != 0.0) {
+                    total_integral += partial_result;
+                } else {
+                    mpi_result = MPI_Recv(results, 2, interval_type, i, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    if (mpi_result != MPI_SUCCESS) {
+                        fprintf(stderr, "MPI_Recv failed\n");
+                        MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                    }
+                    enqueue(results[0], &queue);
+                    enqueue(results[1], &queue);
+                }
             }
         }
+
+        // Send termination message to all workers
+        for (int i = 1; i < world_size; i++) {
+            struct Interval terminate = {.left = 0, .right = 0, .tol = 0};
+            mpi_result = MPI_Send(&terminate, 1, interval_type, i, 1, MPI_COMM_WORLD);
+            if (mpi_result != MPI_SUCCESS) {
+                fprintf(stderr, "MPI_Send failed\n");
+                MPI_Abort(MPI_COMM_WORLD, mpi_result);
+            }
+        }
+
+        printf("Integration complete. Total integral: %f\n", total_integral);
     } else {
         struct Interval local_interval;
-        while (true) {  // Continue processing until there are no more intervals to process
+        double partial_integral = 0.0;
+        while (true) {
             MPI_Status status;
-            MPI_Recv(&local_interval, 1, interval_type, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            // Check if the master has sent a termination signal
-            if (status.MPI_TAG == 1) break;
+            mpi_result = MPI_Recv(&local_interval, 1, interval_type, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            if (mpi_result != MPI_SUCCESS) {
+                fprintf(stderr, "MPI_Recv failed\n");
+                MPI_Abort(MPI_COMM_WORLD, mpi_result);
+            }
+            
+            if (status.MPI_TAG == 1) {  // Termination message
+                break;
+            }
 
             double result;
             struct Interval sub_intervals[2];
             simpson(func1, local_interval, &sub_intervals[0], &sub_intervals[1], &result);
-            MPI_Send(sub_intervals, 2, interval_type, 0, 0, MPI_COMM_WORLD);
+
+            if (result != 0) {
+                partial_integral += result;
+                mpi_result = MPI_Send(&result, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                if (mpi_result != MPI_SUCCESS) {
+                    fprintf(stderr, "MPI_Send failed\n");
+                    MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                }
+            } else {
+                double zero = 0.0;
+                mpi_result = MPI_Send(&zero, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                if (mpi_result != MPI_SUCCESS) {
+                    fprintf(stderr, "MPI_Send failed\n");
+                    MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                }
+                mpi_result = MPI_Send(sub_intervals, 2, interval_type, 0, 0, MPI_COMM_WORLD);
+                if (mpi_result != MPI_SUCCESS) {
+                    fprintf(stderr, "MPI_Send failed\n");
+                    MPI_Abort(MPI_COMM_WORLD, mpi_result);
+                }
+            }
+        }
+
+        // Send partial result back to master
+        mpi_result = MPI_Send(&partial_integral, 1, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
+        if (mpi_result != MPI_SUCCESS) {
+            fprintf(stderr, "MPI_Send failed\n");
+            MPI_Abort(MPI_COMM_WORLD, mpi_result);
         }
     }
 
-    MPI_Type_free(&interval_type);  // Clean up the MPI data type
+    MPI_Type_free(&interval_type);
     MPI_Finalize();
     return 0;
 }
